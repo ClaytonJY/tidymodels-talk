@@ -1,0 +1,1276 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Tidymodeling Titanic Tragedy</title>
+    <meta charset="utf-8">
+    <meta name="author" content="Clayton Yochum" />
+    <meta name="date" content="2018-07-12" />
+    <link href="libs/remark-css/default.css" rel="stylesheet" />
+    <link href="libs/remark-css/default-fonts.css" rel="stylesheet" />
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+# Tidymodeling Titanic Tragedy
+## Ann Arbor R User Group
+### Clayton Yochum
+### July 12, 2018
+
+---
+
+
+
+
+
+# 👋 Hi 👋
+
+- I'm Clayton
+
+--
+
+- I help organize this meetup
+
+--
+
+- Data science &amp; engineering stuff @ Methods Consultants
+    - 😎 Depot Town, Ypsilanti
+    - Lotta finance 🤑 work
+    
+--
+
+- `purrr` is still the best package 🐈
+
+--
+
+- @claytonyochum on 🐦, @claytonjy everywhere else
+
+---
+background-image: url(images/r4ds-loop.png)
+background-size: contain
+class: center
+
+# "The Loop"
+
+???
+- R4DS
+- well-covered by tidyverse
+
+---
+
+# What about modeling _in the tidyverse_?
+
+--
+
+- there is/was a `modelr` package
+
+--
+
+- `caret` (🥕 or💍 ?)
+
+--
+
+- `fable` (tidy `forecast`)
+
+--
+
+- (plenty other attempts)
+
+---
+
+# `caret` 🥕
+
+--
+
+- Wraps hundreds of individual modeling packages with a common interface
+
+--
+
+- So many you gotta 🔍 on the github page to get anywhere!
+
+--
+
+- Does it all: resampling, pre-processing, modeling, tuning, evaluation, etc.
+
+--
+
+- Closest we have to `sci-kit learn`
+
+--
+
+- 👨
+💻 Max Kuhn @topepo ("Applied Predictive Modeling")
+
+--
+
+- Hard to overestimate time/effort from Max here, so 🙏 *praise be to Max* 🙏
+
+---
+
+# Max + RStudio
+
+--
+
+- RStudio hired Max last fall
+
+--
+
+- promarily working on `tidymodels`, a new `-verse` for modeling stuff
+
+--
+
+- focused &amp; tidy (tibbles, functional, etc.)
+
+--
+
+- monolith ➡️ microservices
+
+---
+
+# Tidymodels
+
+- As of a few weeks ago, there's both a [Github Org](https://github.com/tidymodels) and a [`tidymodels` meta-repo](https://github.com/tidymodels/tidymodels/blob/master/DESCRIPTION)
+
+--
+
+- `tidymodels` is a meta-package like `tidyverse`
+
+--
+
+- `tidymodels` isn't on CRAN, most constituents are
+
+--
+
+- These are still _beta_-level at best; lots of things are changing!
+
+--
+
+- `parsnip` isn't even in `tidymodels` yet
+
+--
+
+- (I installed from Github _today_; see last slide for versions used here)
+
+---
+class: middle
+
+# `tidymodels/tidymodels`
+
+`DESCRIPTION`
+
+
+```bash
+Imports: 
+    broom (&gt;= 0.4.4),
+    cli (&gt;= 1.0.0),
+    crayon (&gt;= 1.3.4),
+    dplyr (&gt;= 0.7.4),
+    ggplot2 (&gt;= 2.2.1),
+    infer,
+    magrittr (&gt;= 1.5),
+    pillar (&gt;= 1.2.1),
+    purrr (&gt;= 0.2.4),
+*   recipes,
+    rlang (&gt;= 0.2.0),
+*   rsample,
+    rstudioapi (&gt;= 0.7),
+    tibble (&gt;= 1.4.2),
+    tidytext,
+    tidypredict,
+    tidyposterior,
+*   yardstick
+```
+
+---
+
+# What does modeling involve?
+
+- data import/prep/exploration/cleaning: `tidyverse`
+
+--
+
+- (re)sampling (e.g. 10-fold CV): `rsample`
+
+--
+
+- pre-processing (scale, center, impute, etc.): `recipes`
+
+--
+
+- model fitting: `parsnip`
+
+--
+
+- model evaluation &amp; selection: `yardstick` &amp; `tidyposterior`
+
+---
+
+# Titanic dataset
+
+- trying to predict if someone survived or not based on things like their age, gender, how much they paid, etc.
+
+--
+
+- popularized on Kaggle
+
+---
+
+# Import it
+
+
+```r
+library(fs)  # must be github version
+library(dplyr)
+library(readr)
+
+data_dir &lt;- path_home() / ".kaggle" / "competitions" / "titanic"  # used Kaggle CLI tool
+
+train_file &lt;- data_dir / "train" + ".csv"
+
+cols &lt;- c(
+  "passenger_id", "survived", "ticket_class", "name", "sex", "age", "n_siblings_spouses",
+  "n_parents_children", "ticket_id", "fare", "cabin", "embarked_id"
+)
+
+train_tbl &lt;- train_file %&gt;%
+  read_csv(
+    col_names = cols,
+    col_types = "iiiccdiicdcc",
+    skip      = 1L
+  )
+```
+
+---
+
+# Look at it
+
+
+```r
+glimpse(train_tbl)
+```
+
+```
+## Observations: 891
+## Variables: 12
+## $ passenger_id       &lt;int&gt; 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, ...
+## $ survived           &lt;int&gt; 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0...
+## $ ticket_class       &lt;int&gt; 3, 1, 3, 1, 3, 3, 1, 3, 3, 2, 3, 1, 3, 3, 3...
+## $ name               &lt;chr&gt; "Braund, Mr. Owen Harris", "Cumings, Mrs. J...
+## $ sex                &lt;chr&gt; "male", "female", "female", "female", "male...
+## $ age                &lt;dbl&gt; 22, 38, 26, 35, 35, NA, 54, 2, 27, 14, 4, 5...
+## $ n_siblings_spouses &lt;int&gt; 1, 1, 0, 1, 0, 0, 0, 3, 0, 1, 1, 0, 0, 1, 0...
+## $ n_parents_children &lt;int&gt; 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 1, 0, 0, 5, 0...
+## $ ticket_id          &lt;chr&gt; "A/5 21171", "PC 17599", "STON/O2. 3101282"...
+## $ fare               &lt;dbl&gt; 7.2500, 71.2833, 7.9250, 53.1000, 8.0500, 8...
+## $ cabin              &lt;chr&gt; NA, "C85", NA, "C123", NA, NA, "E46", NA, N...
+## $ embarked_id        &lt;chr&gt; "S", "C", "S", "S", "S", "Q", "S", "S", "S"...
+```
+
+---
+
+# A (bad) first model
+
+
+```r
+library(parsnip)
+requireNamespace("ranger")
+
+model_spec &lt;- rand_forest("classification")
+
+# only the numeric features
+rf &lt;- fit(
+  object  = model_spec,
+  formula = survived ~ n_parents_children + n_siblings_spouses + fare,
+  data    =  mutate(train_tbl, survived = factor(survived, labels = c("no", "yes"))),
+  engine  = "ranger"
+)
+```
+
+---
+
+# A (bad) first model
+
+
+```r
+rf
+```
+
+```
+## parsnip model object
+## 
+## Ranger result
+## 
+## Call:
+##  ranger::ranger(formula = survived ~ n_parents_children + n_siblings_spouses +      fare, data = mutate(train_tbl, survived = factor(survived,      labels = c("no", "yes"))), num.threads = 1, verbose = FALSE,      seed = sample.int(10^5, 1)) 
+## 
+## Type:                             Classification 
+## Number of trees:                  500 
+## Sample size:                      891 
+## Number of independent variables:  3 
+## Mtry:                             1 
+## Target node size:                 1 
+## Variable importance mode:         none 
+## Splitrule:                        gini 
+## OOB prediction error:             28.62 %
+```
+
+---
+
+# How bad?
+
+
+```r
+predictions &lt;- tibble(
+  actual    = factor(train_tbl$survived, labels = c("no", "yes")),
+  predicted = predict_class(rf, train_tbl)
+)
+
+predictions
+```
+
+```
+## # A tibble: 891 x 2
+##    actual predicted
+##    &lt;fct&gt;  &lt;fct&gt;    
+##  1 no     no       
+##  2 yes    yes      
+##  3 yes    no       
+##  4 yes    yes      
+##  5 no     no       
+##  6 no     no       
+##  7 no     no       
+##  8 no     no       
+##  9 yes    yes      
+## 10 yes    no       
+## # ... with 881 more rows
+```
+
+---
+
+# How bad?
+
+
+```r
+library(yardstick)
+
+metrics(predictions, actual, predicted)
+```
+
+```
+## # A tibble: 1 x 2
+##   accuracy kappa
+##      &lt;dbl&gt; &lt;dbl&gt;
+## 1    0.750 0.440
+```
+
+--
+
+
+```r
+conf_mat(predictions, actual, predicted)
+```
+
+```
+##           Truth
+## Prediction  no yes
+##        no  488 162
+##        yes  61 180
+```
+
+---
+
+# How bad?
+
+
+```r
+predictions %&gt;%
+  conf_mat(actual, predicted) %&gt;%
+  summary()
+```
+
+```
+## # A tibble: 14 x 2
+##    name                 value
+##    &lt;chr&gt;                &lt;dbl&gt;
+##  1 accuracy             0.750
+##  2 kappa                0.440
+##  3 sens                 0.889
+##  4 spec                 0.526
+##  5 prevalence           0.616
+##  6 ppv                  0.751
+##  7 npv                  0.747
+##  8 mcc                  0.455
+##  9 j_index              0.415
+## 10 balanced_accuracy    0.708
+## 11 detection_prevalence 0.708
+## 12 precision            0.751
+## 13 recall               0.889
+## 14 F1                   0.814
+```
+
+---
+
+# Let's bake a 🍰
+
+
+```r
+library(recipes)
+
+rec &lt;- train_tbl %&gt;%
+  recipe(survived ~ n_parents_children + n_siblings_spouses + fare) %&gt;%
+  step_bin2factor(all_outcomes())
+
+rec
+```
+
+```
+## Data Recipe
+## 
+## Inputs:
+## 
+##       role #variables
+##    outcome          1
+##  predictor          3
+## 
+## Operations:
+## 
+## Dummy variable to factor conversion for all_outcomes()
+```
+
+---
+
+# Let's bake a 🍰
+
+
+```r
+rec %&gt;%
+  prep() %&gt;%
+  bake(train_tbl)
+```
+
+```
+## # A tibble: 891 x 4
+##    survived n_siblings_spouses n_parents_children  fare
+##    &lt;fct&gt;                 &lt;int&gt;              &lt;int&gt; &lt;dbl&gt;
+##  1 no                        1                  0  7.25
+##  2 yes                       1                  0 71.3 
+##  3 yes                       0                  0  7.92
+##  4 yes                       1                  0 53.1 
+##  5 no                        0                  0  8.05
+##  6 no                        0                  0  8.46
+##  7 no                        0                  0 51.9 
+##  8 no                        3                  1 21.1 
+##  9 yes                       0                  2 11.1 
+## 10 yes                       1                  0 30.1 
+## # ... with 881 more rows
+```
+
+---
+
+# Let's bake a _better_ 🍰
+
+
+```r
+response &lt;- "survived"
+features &lt;- c("n_parents_children", "n_siblings_spouses", "fare", "sex", "age")
+
+rec &lt;- recipe(train_tbl) %&gt;%
+  add_role(response, new_role = "outcome") %&gt;%
+  add_role(features, new_role = "predictor") %&gt;%
+  step_rm(-has_role("outcome"), -has_role("predictor")) %&gt;%
+  step_bin2factor(all_outcomes()) %&gt;%
+  step_meanimpute(all_numeric())
+```
+
+---
+
+# Let's bake a _better_ 🍰
+
+
+```r
+rec
+```
+
+```
+## Data Recipe
+## 
+## Inputs:
+## 
+##       role #variables
+##    outcome          1
+##  predictor          5
+## 
+##   6 variables without declared roles
+## 
+## Operations:
+## 
+## Delete terms -has_role("outcome"), -has_role("predictor")
+## Dummy variable to factor conversion for all_outcomes()
+## Mean Imputation for all_numeric()
+```
+
+
+---
+
+# Have you ever juiced a 🍰?
+
+
+```r
+rec %&gt;%
+  prep(train_tbl, retain = TRUE) %&gt;%  # estimate from training data
+  juice()
+```
+
+```
+## # A tibble: 891 x 6
+##    survived sex      age n_siblings_spouses n_parents_children  fare
+##    &lt;fct&gt;    &lt;fct&gt;  &lt;dbl&gt;              &lt;int&gt;              &lt;int&gt; &lt;dbl&gt;
+##  1 no       male    22                    1                  0  7.25
+##  2 yes      female  38                    1                  0 71.3 
+##  3 yes      female  26                    0                  0  7.92
+##  4 yes      female  35                    1                  0 53.1 
+##  5 no       male    35                    0                  0  8.05
+##  6 no       male    29.7                  0                  0  8.46
+##  7 no       male    54                    0                  0 51.9 
+##  8 no       male     2                    3                  1 21.1 
+##  9 yes      female  27                    0                  2 11.1 
+## 10 yes      female  14                    1                  0 30.1 
+## # ... with 881 more rows
+```
+
+---
+
+# Prep that 🍰
+
+
+```r
+prepped &lt;- prep(rec, train_tbl, retain = TRUE)
+
+prepped
+```
+
+```
+## Data Recipe
+## 
+## Inputs:
+## 
+##       role #variables
+##    outcome          1
+##  predictor          5
+## 
+##   6 variables without declared roles
+## 
+## Training data contained 891 data points and 708 incomplete rows. 
+## 
+## Operations:
+## 
+## Variables removed passenger_id, ticket_class, name, ticket_id, ... [trained]
+## Dummy variable to factor conversion for survived [trained]
+## Mean Imputation for age, ... [trained]
+```
+
+---
+
+# Eat that 🍰
+
+
+```r
+rf &lt;- fit(
+  model_spec,
+  formula = formula(prepped),
+  data    = juice(prepped),
+  engine  = "ranger"
+)
+
+names(rf)
+```
+
+```
+## [1] "lvl"     "spec"    "fit"     "preproc"
+```
+
+---
+
+# How delicious was that 🍰?
+
+
+```r
+predictions &lt;- tibble(
+  actual    = juice(prepped)[[response]],
+  predicted = predict_class(rf, juice(prepped))
+)
+
+predictions %&gt;% metrics(actual, predicted)
+```
+
+```
+## # A tibble: 1 x 2
+##   accuracy kappa
+##      &lt;dbl&gt; &lt;dbl&gt;
+## 1    0.917 0.821
+```
+
+--
+
+better!
+
+---
+
+# One 🍰 is not enough!
+
+Training error doesn't tell us much; we need a test set! Or 10!
+
+
+```r
+library(rsample)
+
+rset &lt;- vfold_cv(train_tbl, v = 10, repeats = 1, strata = NULL)
+
+rset
+```
+
+```
+## #  10-fold cross-validation 
+## # A tibble: 10 x 2
+##    splits       id    
+##    &lt;list&gt;       &lt;chr&gt; 
+##  1 &lt;S3: rsplit&gt; Fold01
+##  2 &lt;S3: rsplit&gt; Fold02
+##  3 &lt;S3: rsplit&gt; Fold03
+##  4 &lt;S3: rsplit&gt; Fold04
+##  5 &lt;S3: rsplit&gt; Fold05
+##  6 &lt;S3: rsplit&gt; Fold06
+##  7 &lt;S3: rsplit&gt; Fold07
+##  8 &lt;S3: rsplit&gt; Fold08
+##  9 &lt;S3: rsplit&gt; Fold09
+## 10 &lt;S3: rsplit&gt; Fold10
+```
+
+---
+
+# Anatomy of a split
+
+
+```r
+rset$splits[[1]]
+```
+
+```
+## &lt;801/90/891&gt;
+```
+
+```r
+analysis(rset$splits[[1]]) # training
+```
+
+```
+## # A tibble: 801 x 12
+##    passenger_id survived ticket_class name    sex     age n_siblings_spou…
+##           &lt;int&gt;    &lt;int&gt;        &lt;int&gt; &lt;chr&gt;   &lt;chr&gt; &lt;dbl&gt;            &lt;int&gt;
+##  1            1        0            3 Braund… male     22                1
+##  2            2        1            1 Cuming… fema…    38                1
+##  3            3        1            3 Heikki… fema…    26                0
+##  4            4        1            1 Futrel… fema…    35                1
+##  5            5        0            3 Allen,… male     35                0
+##  6            6        0            3 Moran,… male     NA                0
+##  7            7        0            1 McCart… male     54                0
+##  8            8        0            3 Palsso… male      2                3
+##  9            9        1            3 Johnso… fema…    27                0
+## 10           10        1            2 Nasser… fema…    14                1
+## # ... with 791 more rows, and 5 more variables: n_parents_children &lt;int&gt;,
+## #   ticket_id &lt;chr&gt;, fare &lt;dbl&gt;, cabin &lt;chr&gt;, embarked_id &lt;chr&gt;
+```
+
+---
+
+# Anatomy of a split
+
+
+```r
+assessment(rset$splits[[1]])  # test
+```
+
+```
+## # A tibble: 90 x 12
+##    passenger_id survived ticket_class name    sex     age n_siblings_spou…
+##           &lt;int&gt;    &lt;int&gt;        &lt;int&gt; &lt;chr&gt;   &lt;chr&gt; &lt;dbl&gt;            &lt;int&gt;
+##  1           30        0            3 Todoro… male   NA                  0
+##  2           49        0            3 Samaan… male   NA                  2
+##  3           54        1            2 Faunth… fema…  29                  1
+##  4           58        0            3 Novel,… male   28.5                0
+##  5           63        0            1 Harris… male   45                  1
+##  6           74        0            3 Chrono… male   26                  1
+##  7           82        1            3 Sheerl… male   29                  0
+##  8           87        0            3 Ford, … male   16                  1
+##  9           96        0            3 Shorne… male   NA                  0
+## 10          105        0            3 Gustaf… male   37                  2
+## # ... with 80 more rows, and 5 more variables: n_parents_children &lt;int&gt;,
+## #   ticket_id &lt;chr&gt;, fare &lt;dbl&gt;, cabin &lt;chr&gt;, embarked_id &lt;chr&gt;
+```
+
+---
+
+# Baking all the 🍰 with all the 🐈
+
+--
+
+
+```r
+library(purrr)
+
+rset$recipes &lt;- map(rset$splits, prepper, recipe = rec, retain = TRUE)
+
+rset
+```
+
+```
+## #  10-fold cross-validation 
+## # A tibble: 10 x 3
+##    splits       id     recipes     
+##    &lt;list&gt;       &lt;chr&gt;  &lt;list&gt;      
+##  1 &lt;S3: rsplit&gt; Fold01 &lt;S3: recipe&gt;
+##  2 &lt;S3: rsplit&gt; Fold02 &lt;S3: recipe&gt;
+##  3 &lt;S3: rsplit&gt; Fold03 &lt;S3: recipe&gt;
+##  4 &lt;S3: rsplit&gt; Fold04 &lt;S3: recipe&gt;
+##  5 &lt;S3: rsplit&gt; Fold05 &lt;S3: recipe&gt;
+##  6 &lt;S3: rsplit&gt; Fold06 &lt;S3: recipe&gt;
+##  7 &lt;S3: rsplit&gt; Fold07 &lt;S3: recipe&gt;
+##  8 &lt;S3: rsplit&gt; Fold08 &lt;S3: recipe&gt;
+##  9 &lt;S3: rsplit&gt; Fold09 &lt;S3: recipe&gt;
+## 10 &lt;S3: rsplit&gt; Fold10 &lt;S3: recipe&gt;
+```
+
+---
+
+# Baking all the 🍰 with all the 🐈
+
+
+```r
+library(ranger)
+
+# parsnip breaks tidyeval in weird ways
+rset$models &lt;- map(rset$recipes, ~ranger(formula = formula(.x), juice(.x)))
+
+rset
+```
+
+```
+## #  10-fold cross-validation 
+## # A tibble: 10 x 4
+##    splits       id     recipes      models      
+##    &lt;list&gt;       &lt;chr&gt;  &lt;list&gt;       &lt;list&gt;      
+##  1 &lt;S3: rsplit&gt; Fold01 &lt;S3: recipe&gt; &lt;S3: ranger&gt;
+##  2 &lt;S3: rsplit&gt; Fold02 &lt;S3: recipe&gt; &lt;S3: ranger&gt;
+##  3 &lt;S3: rsplit&gt; Fold03 &lt;S3: recipe&gt; &lt;S3: ranger&gt;
+##  4 &lt;S3: rsplit&gt; Fold04 &lt;S3: recipe&gt; &lt;S3: ranger&gt;
+##  5 &lt;S3: rsplit&gt; Fold05 &lt;S3: recipe&gt; &lt;S3: ranger&gt;
+##  6 &lt;S3: rsplit&gt; Fold06 &lt;S3: recipe&gt; &lt;S3: ranger&gt;
+##  7 &lt;S3: rsplit&gt; Fold07 &lt;S3: recipe&gt; &lt;S3: ranger&gt;
+##  8 &lt;S3: rsplit&gt; Fold08 &lt;S3: recipe&gt; &lt;S3: ranger&gt;
+##  9 &lt;S3: rsplit&gt; Fold09 &lt;S3: recipe&gt; &lt;S3: ranger&gt;
+## 10 &lt;S3: rsplit&gt; Fold10 &lt;S3: recipe&gt; &lt;S3: ranger&gt;
+```
+
+---
+
+# Taste-testing 🍰
+
+
+```r
+predict_rf &lt;- function(split, rec, model) {
+  
+  test &lt;- bake(rec, assessment(split))
+  
+  tibble(
+    actual    = test$survived,
+    predicted = predict(model, test)$predictions
+  )
+}
+
+rset &lt;- rset %&gt;%
+  mutate(
+    predictions = pmap(list(splits, recipes, models), predict_rf),
+    metrics     = map(predictions, metrics, actual, predicted)
+  )
+```
+
+---
+
+# Taste-testing 🍰
+
+
+```r
+rset %&gt;%
+  select(id, metrics) %&gt;%
+  unnest(metrics)
+```
+
+```
+## # A tibble: 10 x 3
+##    id     accuracy kappa
+##    &lt;chr&gt;     &lt;dbl&gt; &lt;dbl&gt;
+##  1 Fold01    0.8   0.533
+##  2 Fold02    0.876 0.733
+##  3 Fold03    0.787 0.526
+##  4 Fold04    0.787 0.560
+##  5 Fold05    0.865 0.711
+##  6 Fold06    0.820 0.621
+##  7 Fold07    0.876 0.743
+##  8 Fold08    0.787 0.555
+##  9 Fold09    0.787 0.545
+## 10 Fold10    0.876 0.716
+```
+
+---
+
+# Taste-testing 🍰
+
+
+```r
+rset %&gt;%
+  select(id, metrics) %&gt;%
+  unnest(metrics) %&gt;%
+  summarize_at(vars(accuracy), funs(mean, sd))
+```
+
+```
+## # A tibble: 1 x 2
+##    mean     sd
+##   &lt;dbl&gt;  &lt;dbl&gt;
+## 1 0.826 0.0423
+```
+
+---
+
+# Next steps
+
+Bake a better 🍰!
+
+--
+
+- better recipe (fancier feature engineering)
+
+--
+
+- better models (_deep learning_)
+
+--
+
+- _tune_ the models (`parsnip::varying()`)
+
+--
+
+Force-feed your 🍰 to Kaggle!
+
+- never got to that here
+
+---
+
+# Other cool `tidymodels` stuff
+
+--
+
+- `tidyposterior`
+
+--
+
+- `embed`
+
+---
+
+# Session Info
+
+
+```r
+devtools::session_info("tidymodels")
+```
+
+```
+##  setting  value                       
+##  version  R version 3.4.4 (2018-03-15)
+##  system   x86_64, linux-gnu           
+##  ui       X11                         
+##  language (EN)                        
+##  collate  en_US.UTF-8                 
+##  tz       America/Detroit             
+##  date     2018-07-12                  
+## 
+##  package              * version    date      
+##  abind                  1.4-5      2016-07-21
+##  assertive              0.3-5      2016-12-31
+##  assertive.base         0.0-7      2016-12-30
+##  assertive.code         0.0-1      2015-10-06
+##  assertive.data         0.0-1      2015-10-06
+##  assertive.data.uk      0.0-1      2015-10-06
+##  assertive.data.us      0.0-1      2015-10-06
+##  assertive.datetimes    0.0-2      2016-05-10
+##  assertive.files        0.0-2      2016-05-10
+##  assertive.matrices     0.0-1      2015-10-06
+##  assertive.models       0.0-1      2015-10-06
+##  assertive.numbers      0.0-2      2016-05-09
+##  assertive.properties   0.0-4      2016-12-30
+##  assertive.reflection   0.0-4      2016-12-30
+##  assertive.sets         0.0-3      2016-12-30
+##  assertive.strings      0.0-3      2016-05-10
+##  assertive.types        0.0-3      2016-12-30
+##  assertthat             0.2.0      2017-04-11
+##  base64enc              0.1-3      2015-07-28
+##  bayesplot              1.5.0      2018-03-30
+##  BH                     1.66.0-1   2018-02-13
+##  bindr                  0.1.1      2018-03-13
+##  bindrcpp             * 0.2.2      2018-03-29
+##  bitops                 1.0-6      2013-08-17
+##  broom                * 0.4.5      2018-07-03
+##  caTools                1.17.1     2014-09-10
+##  class                  7.3-14     2015-08-30
+##  cli                    1.0.0      2017-11-05
+##  codetools              0.2-15     2016-10-05
+##  colorspace             1.3-2      2016-12-14
+##  colourpicker           1.0        2017-09-27
+##  compiler               3.4.4      2018-03-16
+##  crayon                 1.3.4      2017-09-16
+##  crosstalk              1.0.0      2016-12-21
+##  CVST                   0.2-2      2018-05-26
+##  ddalpha                1.3.4      2018-06-23
+##  DEoptimR               1.0-8      2016-11-19
+##  dichromat              2.0-0      2013-01-24
+##  digest                 0.6.15     2018-01-28
+##  dimRed                 0.1.0      2017-05-04
+##  dplyr                * 0.7.6      2018-06-29
+##  DRR                    0.0.3      2018-01-06
+##  DT                     0.4        2018-01-30
+##  dygraphs               1.1.1.6    2018-07-11
+##  evaluate               0.10.1     2017-06-24
+##  foreign                0.8-70     2018-04-23
+##  gdata                  2.18.0     2017-06-06
+##  geometry               0.3-6      2015-09-09
+##  ggplot2                3.0.0      2018-07-03
+##  ggridges               0.5.0      2018-04-05
+##  glue                   1.2.0      2017-10-29
+##  gower                  0.1.2      2017-02-23
+##  gplots                 3.0.1      2016-03-30
+##  graphics             * 3.4.4      2018-03-16
+##  grDevices            * 3.4.4      2018-03-16
+##  grid                   3.4.4      2018-03-16
+##  gridExtra              2.3        2017-09-09
+##  gtable                 0.2.0      2016-02-26
+##  gtools                 3.8.1      2018-06-26
+##  highr                  0.7        2018-06-09
+##  htmltools              0.3.6      2017-04-28
+##  htmlwidgets            1.2        2018-04-19
+##  httpuv                 1.4.4.1    2018-06-18
+##  hunspell               2.9        2017-12-16
+##  igraph                 1.2.1      2018-03-10
+##  infer                  0.3.0      2018-07-11
+##  inline                 0.3.15     2018-05-18
+##  ipred                  0.9-6      2017-03-01
+##  ISOcodes               2018.06.29 2018-06-30
+##  janeaustenr            0.1.5      2017-06-10
+##  jsonlite               1.5        2017-06-01
+##  kernlab                0.9-26     2018-04-30
+##  KernSmooth             2.23-15    2015-06-29
+##  knitr                  1.20       2018-02-20
+##  labeling               0.3        2014-08-23
+##  later                  0.7.3      2018-06-08
+##  lattice                0.20-35    2017-03-25
+##  lava                   1.6.1      2018-03-28
+##  lazyeval               0.2.1      2017-10-29
+##  lme4                   1.1-17     2018-04-03
+##  loo                    2.0.0      2018-04-11
+##  lubridate              1.7.4      2018-04-11
+##  magic                  1.5-8      2018-01-26
+##  magrittr               1.5        2014-11-22
+##  markdown               0.8        2017-04-20
+##  MASS                   7.3-50     2018-04-30
+##  Matrix                 1.2-14     2018-04-09
+##  matrixStats            0.53.1     2018-02-11
+##  methods              * 3.4.4      2018-03-16
+##  mgcv                   1.8-24     2018-06-18
+##  mime                   0.5        2016-07-07
+##  miniUI                 0.1.1.1    2018-05-18
+##  minqa                  1.2.4      2014-10-09
+##  MLmetrics              1.1.1      2016-05-13
+##  mnormt                 1.5-5      2016-10-15
+##  munsell                0.5.0      2018-06-12
+##  nlme                   3.1-137    2018-04-07
+##  nloptr                 1.0.4      2017-08-22
+##  nnet                   7.3-12     2016-02-02
+##  numDeriv               2016.8-1   2016-08-27
+##  packrat                0.4.9-3    2018-06-01
+##  parallel               3.4.4      2018-03-16
+##  pillar                 1.2.3      2018-05-25
+##  pkgconfig              2.0.1      2017-03-21
+##  PKI                    0.1-5.1    2017-09-16
+##  plogr                  0.2.0      2018-03-25
+##  pls                    2.6-0      2016-12-18
+##  plyr                   1.8.4      2016-06-08
+##  pROC                   1.12.1     2018-05-06
+##  prodlim                2018.04.18 2018-04-18
+##  promises               1.0.1      2018-04-13
+##  psych                  1.8.4      2018-05-06
+##  purrr                * 0.2.5      2018-05-29
+##  R6                     2.2.2      2017-06-17
+##  RColorBrewer           1.1-2      2014-12-07
+##  Rcpp                   0.12.17    2018-05-18
+##  RcppEigen              0.3.3.4.0  2018-02-07
+##  RcppRoll               0.3.0      2018-06-05
+##  RCurl                  1.95-4.10  2018-01-04
+##  recipes              * 0.1.3      2018-07-09
+##  reshape2               1.4.3      2017-12-11
+##  RJSONIO                1.3-0      2014-07-28
+##  rlang                  0.2.0.9001 2018-07-06
+##  robustbase             0.93-1     2018-06-23
+##  ROCR                   1.0-7      2015-03-26
+##  rpart                  4.1-13     2018-02-23
+##  rsample              * 0.0.2      2017-11-12
+##  rsconnect              0.8.8      2018-03-09
+##  rstan                  2.17.3     2018-01-20
+##  rstanarm               2.17.4     2018-04-13
+##  rstantools             1.5.0      2018-04-17
+##  rstudioapi             0.7        2017-09-07
+##  scales                 0.5.0      2017-08-24
+##  sfsmisc                1.1-2      2018-03-05
+##  shiny                  1.1.0      2018-05-17
+##  shinyjs                1.0        2018-01-08
+##  shinystan              2.5.0      2018-05-01
+##  shinythemes            1.1.1      2016-10-12
+##  SnowballC              0.5.1      2014-08-09
+##  sourcetools            0.1.7      2018-04-25
+##  splines                3.4.4      2018-03-16
+##  SQUAREM                2017.10-1  2017-10-07
+##  StanHeaders            2.17.2     2018-01-20
+##  stats                * 3.4.4      2018-03-16
+##  stats4                 3.4.4      2018-03-16
+##  stopwords              0.9.0      2017-12-14
+##  stringi                1.2.3      2018-06-12
+##  stringr                1.3.1      2018-05-10
+##  survival               2.42-3     2018-04-16
+##  threejs                0.3.1      2017-08-13
+##  tibble                 1.4.2      2018-01-22
+##  tidymodels             0.0.0.9000 2018-07-12
+##  tidyposterior          0.0.1      2017-11-14
+##  tidypredict            0.2.0      2018-02-25
+##  tidyr                * 0.8.1      2018-05-18
+##  tidyselect             0.2.4      2018-02-26
+##  tidytext               0.1.9      2018-05-29
+##  timeDate               3043.102   2018-02-21
+##  tokenizers             0.2.1      2018-03-29
+##  tools                  3.4.4      2018-03-16
+##  utf8                   1.1.4      2018-05-24
+##  utils                * 3.4.4      2018-03-16
+##  viridisLite            0.3.0      2018-02-01
+##  withr                  2.1.2      2018-03-15
+##  xtable                 1.8-2      2016-02-05
+##  xts                    0.10-2     2018-03-14
+##  yaml                   2.1.19     2018-05-01
+##  yardstick            * 0.0.1      2018-06-24
+##  zoo                    1.8-2      2018-06-11
+##  source                                
+##  CRAN (R 3.4.4)                        
+##  cran (@0.3-5)                         
+##  cran (@0.0-7)                         
+##  cran (@0.0-1)                         
+##  cran (@0.0-1)                         
+##  cran (@0.0-1)                         
+##  cran (@0.0-1)                         
+##  cran (@0.0-2)                         
+##  cran (@0.0-2)                         
+##  cran (@0.0-1)                         
+##  cran (@0.0-1)                         
+##  cran (@0.0-2)                         
+##  cran (@0.0-4)                         
+##  cran (@0.0-4)                         
+##  cran (@0.0-3)                         
+##  cran (@0.0-3)                         
+##  cran (@0.0-3)                         
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  cran (@1.5.0)                         
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  cran (@0.4.5)                         
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.0)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.3.1)                        
+##  CRAN (R 3.4.4)                        
+##  cran (@1.0)                           
+##  local                                 
+##  CRAN (R 3.4.4)                        
+##  cran (@1.0.0)                         
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  cran (@0.7.6)                         
+##  CRAN (R 3.4.4)                        
+##  cran (@0.4)                           
+##  cran (@1.1.1.6)                       
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  cran (@3.0.0)                         
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  local                                 
+##  local                                 
+##  local                                 
+##  cran (@2.3)                           
+##  CRAN (R 3.4.4)                        
+##  cran (@3.8.1)                         
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  cran (@1.2)                           
+##  CRAN (R 3.4.4)                        
+##  cran (@2.9)                           
+##  cran (@1.2.1)                         
+##  cran (@0.3.0)                         
+##  cran (@0.3.15)                        
+##  CRAN (R 3.4.4)                        
+##  cran (@2018.06)                       
+##  cran (@0.1.5)                         
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.0)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.3.3)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  cran (@2.0.0)                         
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  cran (@0.53.1)                        
+##  local                                 
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.0)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  local                                 
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  Github (topepo/recipes@b1b5da9)       
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  Github (tidyverse/rlang@b4f810f)      
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.3)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  cran (@2.17.3)                        
+##  cran (@2.17.4)                        
+##  cran (@1.5.0)                         
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  cran (@1.0)                           
+##  cran (@2.5.0)                         
+##  cran (@1.1.1)                         
+##  cran (@0.5.1)                         
+##  CRAN (R 3.4.4)                        
+##  local                                 
+##  CRAN (R 3.4.4)                        
+##  cran (@2.17.2)                        
+##  local                                 
+##  local                                 
+##  cran (@0.9.0)                         
+##  cran (@1.2.3)                         
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  cran (@0.3.1)                         
+##  CRAN (R 3.4.4)                        
+##  Github (tidymodels/tidymodels@31811a3)
+##  cran (@0.0.1)                         
+##  cran (@0.2.0)                         
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  cran (@0.1.9)                         
+##  CRAN (R 3.4.4)                        
+##  cran (@0.2.1)                         
+##  local                                 
+##  CRAN (R 3.4.4)                        
+##  local                                 
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  CRAN (R 3.4.4)                        
+##  local                                 
+##  CRAN (R 3.4.4)
+```
+    </textarea>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+"highlightStyle": "github",
+"highlightLines": true,
+"countIncrementalSlides": false,
+"ratio": "16:9"
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function() {
+  var d = document, s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})();</script>
+
+<script type="text/x-mathjax-config">
+MathJax.Hub.Config({
+  tex2jax: {
+    skipTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+  }
+});
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://cdn.bootcss.com/mathjax/2.7.1/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>

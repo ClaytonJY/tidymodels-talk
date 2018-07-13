@@ -1,0 +1,557 @@
+---
+title: "Tidymodeling Titanic Tragedy"
+subtitle: "Ann Arbor R User Group"
+author: "Clayton Yochum"
+date: "July 12, 2018"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+      ratio: '16:9'
+---
+
+```{r setup, include=FALSE}
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+
+# 👋 Hi 👋
+
+- I'm Clayton
+
+--
+
+- I help organize this meetup
+
+--
+
+- Data science & engineering stuff @ Methods Consultants
+    - 😎 Depot Town, Ypsilanti
+    - Lotta finance 🤑 work
+    
+--
+
+- `purrr` is still the best package 🐈
+
+--
+
+- @claytonyochum on 🐦, @claytonjy everywhere else
+
+---
+background-image: url(images/r4ds-loop.png)
+background-size: contain
+class: center
+
+# "The Loop"
+
+???
+- R4DS
+- well-covered by tidyverse
+
+---
+
+# What about modeling _in the tidyverse_?
+
+--
+
+- there is/was a `modelr` package
+
+--
+
+- `caret` (🥕 or💍 ?)
+
+--
+
+- `fable` (tidy `forecast`)
+
+--
+
+- (plenty other attempts)
+
+---
+
+# `caret` 🥕
+
+--
+
+- Wraps hundreds of individual modeling packages with a common interface
+
+--
+
+- So many you gotta 🔍 on the github page to get anywhere!
+
+--
+
+- Does it all: resampling, pre-processing, modeling, tuning, evaluation, etc.
+
+--
+
+- Closest we have to `sci-kit learn`
+
+--
+
+- 👨
+💻 Max Kuhn @topepo ("Applied Predictive Modeling")
+
+--
+
+- Hard to overestimate time/effort from Max here, so 🙏 *praise be to Max* 🙏
+
+---
+
+# Max + RStudio
+
+--
+
+- RStudio hired Max last fall
+
+--
+
+- promarily working on `tidymodels`, a new `-verse` for modeling stuff
+
+--
+
+- focused & tidy (tibbles, functional, etc.)
+
+--
+
+- monolith ➡️ microservices
+
+---
+
+# Tidymodels
+
+- As of a few weeks ago, there's both a [Github Org](https://github.com/tidymodels) and a [`tidymodels` meta-repo](https://github.com/tidymodels/tidymodels/blob/master/DESCRIPTION)
+
+--
+
+- `tidymodels` is a meta-package like `tidyverse`
+
+--
+
+- `tidymodels` isn't on CRAN, most constituents are
+
+--
+
+- These are still _beta_-level at best; lots of things are changing!
+
+--
+
+- `parsnip` isn't even in `tidymodels` yet
+
+--
+
+- (I installed from Github _today_; see last slide for versions used here)
+
+---
+class: middle
+
+# `tidymodels/tidymodels`
+
+`DESCRIPTION`
+
+```{bash, eval=FALSE}
+Imports: 
+    broom (>= 0.4.4),
+    cli (>= 1.0.0),
+    crayon (>= 1.3.4),
+    dplyr (>= 0.7.4),
+    ggplot2 (>= 2.2.1),
+    infer,
+    magrittr (>= 1.5),
+    pillar (>= 1.2.1),
+    purrr (>= 0.2.4),
+    recipes,              #<<
+    rlang (>= 0.2.0),
+    rsample,              #<<
+    rstudioapi (>= 0.7),
+    tibble (>= 1.4.2),
+    tidytext,
+    tidypredict,
+    tidyposterior,
+    yardstick             #<<
+```
+
+---
+
+# What does modeling involve?
+
+- data import/prep/exploration/cleaning: `tidyverse`
+
+--
+
+- (re)sampling (e.g. 10-fold CV): `rsample`
+
+--
+
+- pre-processing (scale, center, impute, etc.): `recipes`
+
+--
+
+- model fitting: `parsnip`
+
+--
+
+- model evaluation & selection: `yardstick` & `tidyposterior`
+
+---
+
+# Titanic dataset
+
+- trying to predict if someone survived or not based on things like their age, gender, how much they paid, etc.
+
+--
+
+- popularized on Kaggle
+
+---
+
+# Import it
+
+```{r, message=FALSE}
+library(fs)  # must be github version
+library(dplyr)
+library(readr)
+
+data_dir <- path_home() / ".kaggle" / "competitions" / "titanic"  # used Kaggle CLI tool
+
+train_file <- data_dir / "train" + ".csv"
+
+cols <- c(
+  "passenger_id", "survived", "ticket_class", "name", "sex", "age", "n_siblings_spouses",
+  "n_parents_children", "ticket_id", "fare", "cabin", "embarked_id"
+)
+
+train_tbl <- train_file %>%
+  read_csv(
+    col_names = cols,
+    col_types = "iiiccdiicdcc",
+    skip      = 1L
+  )
+```
+
+---
+
+# Look at it
+
+```{r}
+glimpse(train_tbl)
+```
+
+---
+
+# A (bad) first model
+
+```{r}
+library(parsnip)
+requireNamespace("ranger")
+
+model_spec <- rand_forest("classification")
+
+# only the numeric features
+rf <- fit(
+  object  = model_spec,
+  formula = survived ~ n_parents_children + n_siblings_spouses + fare,
+  data    =  mutate(train_tbl, survived = factor(survived, labels = c("no", "yes"))),
+  engine  = "ranger"
+)
+```
+
+---
+
+# A (bad) first model
+
+```{r}
+rf
+```
+
+---
+
+# How bad?
+
+```{r}
+predictions <- tibble(
+  actual    = factor(train_tbl$survived, labels = c("no", "yes")),
+  predicted = predict_class(rf, train_tbl)
+)
+
+predictions
+```
+
+---
+
+# How bad?
+
+```{r}
+library(yardstick)
+
+metrics(predictions, actual, predicted)
+```
+
+--
+
+```{r}
+conf_mat(predictions, actual, predicted)
+```
+
+---
+
+# How bad?
+
+```{r}
+predictions %>%
+  conf_mat(actual, predicted) %>%
+  summary()
+```
+
+---
+
+# Let's bake a 🍰
+
+```{r}
+library(recipes)
+
+rec <- train_tbl %>%
+  recipe(survived ~ n_parents_children + n_siblings_spouses + fare) %>%
+  step_bin2factor(all_outcomes())
+
+rec
+```
+
+---
+
+# Let's bake a 🍰
+
+```{r}
+rec %>%
+  prep() %>%
+  bake(train_tbl)
+```
+
+---
+
+# Let's bake a _better_ 🍰
+
+```{r, message=FALSE}
+response <- "survived"
+features <- c("n_parents_children", "n_siblings_spouses", "fare", "sex", "age")
+
+rec <- recipe(train_tbl) %>%
+  add_role(response, new_role = "outcome") %>%
+  add_role(features, new_role = "predictor") %>%
+  step_rm(-has_role("outcome"), -has_role("predictor")) %>%
+  step_bin2factor(all_outcomes()) %>%
+  step_meanimpute(all_numeric())
+```
+
+---
+
+# Let's bake a _better_ 🍰
+
+```{r}
+rec
+```
+
+
+---
+
+# Have you ever juiced a 🍰?
+
+```{r}
+rec %>%
+  prep(train_tbl, retain = TRUE) %>%  # estimate from training data
+  juice()
+```
+
+---
+
+# Prep that 🍰
+
+```{r}
+prepped <- prep(rec, train_tbl, retain = TRUE)
+
+prepped
+```
+
+---
+
+# Eat that 🍰
+
+```{r}
+rf <- fit(
+  model_spec,
+  formula = formula(prepped),
+  data    = juice(prepped),
+  engine  = "ranger"
+)
+
+names(rf)
+```
+
+---
+
+# How delicious was that 🍰?
+
+```{r}
+predictions <- tibble(
+  actual    = juice(prepped)[[response]],
+  predicted = predict_class(rf, juice(prepped))
+)
+
+predictions %>% metrics(actual, predicted)
+```
+
+--
+
+better!
+
+---
+
+# One 🍰 is not enough!
+
+Training error doesn't tell us much; we need a test set! Or 10!
+
+```{r}
+library(rsample)
+
+rset <- vfold_cv(train_tbl, v = 10, repeats = 1, strata = NULL)
+
+rset
+```
+
+---
+
+# Anatomy of a split
+
+```{r}
+rset$splits[[1]]
+analysis(rset$splits[[1]]) # training
+```
+
+---
+
+# Anatomy of a split
+
+```{r}
+assessment(rset$splits[[1]])  # test
+```
+
+---
+
+# Baking all the 🍰 with all the 🐈
+
+--
+
+```{r}
+library(purrr)
+
+rset$recipes <- map(rset$splits, prepper, recipe = rec, retain = TRUE)
+
+rset
+```
+
+---
+
+# Baking all the 🍰 with all the 🐈
+
+```{r}
+library(ranger)
+
+# parsnip breaks tidyeval in weird ways
+rset$models <- map(rset$recipes, ~ranger(formula = formula(.x), juice(.x)))
+
+rset
+```
+
+---
+
+# Taste-testing 🍰
+
+```{r}
+predict_rf <- function(split, rec, model) {
+  
+  test <- bake(rec, assessment(split))
+  
+  tibble(
+    actual    = test$survived,
+    predicted = predict(model, test)$predictions
+  )
+}
+
+rset <- rset %>%
+  mutate(
+    predictions = pmap(list(splits, recipes, models), predict_rf),
+    metrics     = map(predictions, metrics, actual, predicted)
+  )
+```
+
+---
+
+# Taste-testing 🍰
+
+```{r}
+rset %>%
+  select(id, metrics) %>%
+  unnest(metrics)
+```
+
+---
+
+# Taste-testing 🍰
+
+```{r}
+rset %>%
+  select(id, metrics) %>%
+  unnest(metrics) %>%
+  summarize_at(vars(accuracy), funs(mean, sd))
+```
+
+---
+
+# Next steps
+
+Bake a better 🍰!
+
+--
+
+- better recipe (fancier feature engineering)
+
+--
+
+- better models (_deep learning_)
+
+--
+
+- _tune_ the models (`parsnip::varying()`)
+
+--
+
+Force-feed your 🍰 to Kaggle!
+
+- never got to that here
+
+---
+
+# Other cool `tidymodels` stuff
+
+--
+
+- `tidyposterior`
+
+--
+
+- `embed`
+
+---
+
+# Session Info
+
+```{r}
+devtools::session_info("tidymodels")
+```
+
+
